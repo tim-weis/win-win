@@ -1,9 +1,10 @@
-use std::mem;
-use std::ptr::null_mut;
-
-use winapi::shared::minwindef::BOOL;
-use winapi::shared::windef::HACCEL;
-use winapi::um::winuser::{DispatchMessageW, GetMessageW, TranslateAcceleratorW, TranslateMessage};
+use crate::bindings::windows::win32::{
+    menus_and_resources::HACCEL,
+    system_services::BOOL,
+    windows_and_messaging::{
+        DispatchMessageW, GetMessageW, TranslateAcceleratorW, TranslateMessage, HWND, MSG,
+    },
+};
 
 /// A basic winapi runloop.
 ///
@@ -18,19 +19,18 @@ use winapi::um::winuser::{DispatchMessageW, GetMessageW, TranslateAcceleratorW, 
 ///
 /// # Safety
 ///
-/// The `accel` argument must be a valid HACCEL handle (though `null_mut()` is valid).
+/// The `accel` argument must be a valid HACCEL handle (though `default()` is valid).
 ///
 /// [`WM_QUIT`]: https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-quit
 /// [`SendMessage`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendmessage
 pub unsafe fn runloop(accel: HACCEL) -> BOOL {
     loop {
-        let mut msg = mem::MaybeUninit::uninit();
-        let res = GetMessageW(msg.as_mut_ptr(), null_mut(), 0, 0);
-        if res <= 0 {
+        let mut msg = MSG::default();
+        let res = GetMessageW(&mut msg, HWND(0), 0, 0);
+        if res.0 <= 0 {
             return res;
         }
-        let mut msg = msg.assume_init();
-        if accel.is_null() || TranslateAcceleratorW(msg.hwnd, accel, &mut msg) == 0 {
+        if accel.0 == 0 || TranslateAcceleratorW(msg.hwnd, accel, &mut msg) == 0 {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }

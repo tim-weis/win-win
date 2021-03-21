@@ -1,5 +1,6 @@
 use std::fmt;
-use winapi::um::winnt::HRESULT;
+
+use crate::bindings::windows::win32::com::HRESULT;
 
 /// A wrapper for winapi errors.
 #[derive(Debug)]
@@ -12,7 +13,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::RegisterClassFailed => write!(f, "RegisterClass failed"),
-            Error::Hresult(hr) => write!(f, "HRESULT 0x{:x}", hr),
+            Error::Hresult(hr) => write!(f, "HRESULT 0x{:x}", hr.0),
         }
     }
 }
