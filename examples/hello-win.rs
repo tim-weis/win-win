@@ -1,14 +1,14 @@
 #[allow(unused)]
 use std::cell::RefCell;
-use std::ptr::null_mut;
 
-use winapi::shared::minwindef::{HINSTANCE, LPARAM, LRESULT, UINT, WPARAM};
-use winapi::shared::windef::HWND;
-use winapi::um::wingdi::CreateSolidBrush;
-use winapi::um::winuser::{
-    LoadCursorW, LoadIconW, PostQuitMessage, ShowWindow, IDC_ARROW, IDI_APPLICATION, SW_SHOWNORMAL,
-    WM_CHAR, WM_DESTROY, WM_INPUTLANGCHANGE, WM_KEYDOWN, WM_KEYUP, WM_SYSCHAR, WM_SYSKEYDOWN,
-    WM_SYSKEYUP, WS_OVERLAPPEDWINDOW,
+use windows::Win32::{
+    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+    Graphics::Gdi::CreateSolidBrush,
+    UI::WindowsAndMessaging::{
+        LoadCursorW, LoadIconW, PostQuitMessage, ShowWindow, IDC_ARROW, IDI_APPLICATION,
+        SW_SHOWNORMAL, WM_CHAR, WM_DESTROY, WM_INPUTLANGCHANGE, WM_KEYDOWN, WM_KEYUP, WM_SYSCHAR,
+        WM_SYSKEYDOWN, WM_SYSKEYUP, WS_OVERLAPPEDWINDOW,
+    },
 };
 
 #[cfg(feature = "kb")]
@@ -23,13 +23,7 @@ struct MyWindowProc {
 
 impl WindowProc for MyWindowProc {
     #[allow(unused)]
-    fn window_proc(
-        &self,
-        hwnd: HWND,
-        msg: UINT,
-        wparam: WPARAM,
-        lparam: LPARAM,
-    ) -> Option<LRESULT> {
+    fn window_proc(&self, hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
         match msg {
             WM_DESTROY => unsafe {
                 PostQuitMessage(0);
@@ -54,8 +48,8 @@ impl WindowProc for MyWindowProc {
 
 fn main() {
     unsafe {
-        let icon = LoadIconW(0 as HINSTANCE, IDI_APPLICATION);
-        let cursor = LoadCursorW(0 as HINSTANCE, IDC_ARROW);
+        let icon = LoadIconW(None, IDI_APPLICATION);
+        let cursor = LoadCursorW(None, IDC_ARROW);
         let brush = CreateSolidBrush(0xff_ff_ff);
         let win_class = WindowClass::builder("rust")
             .icon(icon)
@@ -72,6 +66,6 @@ fn main() {
             .style(WS_OVERLAPPEDWINDOW)
             .build();
         ShowWindow(hwnd, SW_SHOWNORMAL);
-        win_win::runloop(null_mut());
+        win_win::runloop(Default::default());
     }
 }

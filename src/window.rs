@@ -2,16 +2,16 @@
 
 use std::ffi::OsStr;
 use std::mem;
-use std::ptr::{null, null_mut};
+use std::ptr::null;
 use std::rc::Rc;
 
-use winapi::ctypes::c_int;
-use winapi::shared::minwindef::{ATOM, DWORD, HINSTANCE, LPARAM, LPVOID, LRESULT, UINT, WPARAM};
-use winapi::shared::windef::{HBRUSH, HCURSOR, HICON, HMENU, HWND};
-use winapi::um::winnt::LPCWSTR;
-use winapi::um::winuser::{
-    CreateWindowExW, DefWindowProcW, GetWindowLongPtrW, RegisterClassExW, SetWindowLongPtrW,
-    CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA, WM_CREATE, WM_NCDESTROY, WNDCLASSEXW,
+use windows::runtime::Handle;
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM};
+use windows::Win32::Graphics::Gdi::HBRUSH;
+use windows::Win32::UI::WindowsAndMessaging::{
+    CreateWindowExW, DefWindowProcW, RegisterClassExW, CREATESTRUCTW, CW_USEDEFAULT, GWLP_USERDATA,
+    HCURSOR, HICON, HMENU, WINDOW_EX_STYLE, WINDOW_LONG_PTR_INDEX, WINDOW_STYLE, WM_CREATE,
+    WM_NCDESTROY, WNDCLASSEXW, WNDCLASS_STYLES,
 };
 
 use wio::wide::ToWide;
@@ -46,20 +46,19 @@ pub trait WindowProc {
     /// When return value is `None`, [`DefWindowProc`] is called.
     ///
     /// [`DefWindowProc`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-defwindowprocw
-    fn window_proc(&self, hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM)
-        -> Option<LRESULT>;
+    fn window_proc(&self, hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT>;
 }
 
 /// A window class.
 pub enum WindowClass {
-    Atom(ATOM),
+    Atom(u16),
     Name(Vec<u16>),
 }
 
 /// A builder for registering new window classes.
 pub struct WindowClassBuilder {
-    style: UINT,
-    cbWndExtra: c_int,
+    style: WNDCLASS_STYLES,
+    cbWndExtra: i32,
     hInstance: HINSTANCE,
     hIcon: HICON,
     hCursor: HCURSOR,
@@ -72,14 +71,14 @@ pub struct WindowClassBuilder {
 /// A builder for creating new windows.
 pub struct WindowBuilder<'a> {
     window_proc: Rc<Box<dyn WindowProc>>,
-    dwExStyle: DWORD,
+    dwExStyle: WINDOW_EX_STYLE,
     window_class: &'a WindowClass,
     window_name: Vec<u16>,
-    dwStyle: DWORD,
-    x: c_int,
-    y: c_int,
-    nWidth: c_int,
-    nHeight: c_int,
+    dwStyle: WINDOW_STYLE,
+    x: i32,
+    y: i32,
+    nWidth: i32,
+    nHeight: i32,
     hWndParent: HWND,
     hMenu: HMENU,
     hInstance: HINSTANCE,
@@ -98,17 +97,17 @@ impl<'a> WindowBuilder<'a> {
     ) -> WindowBuilder {
         WindowBuilder {
             window_proc: Rc::new(Box::new(window_proc)),
-            dwExStyle: 0,
+            dwExStyle: Default::default(),
             window_class,
             window_name: Vec::new(),
-            dwStyle: 0,
+            dwStyle: Default::default(),
             x: CW_USEDEFAULT,
             y: CW_USEDEFAULT,
             nWidth: CW_USEDEFAULT,
             nHeight: CW_USEDEFAULT,
-            hWndParent: null_mut(),
-            hMenu: null_mut(),
-            hInstance: null_mut(),
+            hWndParent: Default::default(),
+            hMenu: Default::default(),
+            hInstance: Default::default(),
         }
     }
 
@@ -122,11 +121,11 @@ impl<'a> WindowBuilder<'a> {
     /// [`WM_NCDESTROY`]: https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-ncdestroy
     pub fn build(self) -> HWND {
         unsafe {
-            let wnd_proc_ptr = Rc::into_raw(self.window_proc) as LPVOID;
+            let wnd_proc_ptr = Rc::into_raw(self.window_proc) as _;
             let hwnd = CreateWindowExW(
                 self.dwExStyle,
-                self.window_class.as_lpcwstr(),
-                pointer_or_null(&self.window_name),
+                self.window_class.as_lpwstr(),
+                PWSTR(pointer_or_null(&self.window_name) as *mut _),
                 self.dwStyle,
                 self.x,
                 self.y,
@@ -137,7 +136,7 @@ impl<'a> WindowBuilder<'a> {
                 self.hInstance,
                 wnd_proc_ptr,
             );
-            if hwnd.is_null() {
+            if hwnd.is_invalid() {
                 std::mem::drop(Rc::from_raw(wnd_proc_ptr));
             }
             hwnd
@@ -161,7 +160,7 @@ impl<'a> WindowBuilder<'a> {
     ///
     /// [`CreateWindowEx`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw
     /// [Window Styles]: https://docs.microsoft.com/en-us/windows/win32/winmsg/window-styles
-    pub fn style(mut self, style: DWORD) -> Self {
+    pub fn style(mut self, style: WINDOW_STYLE) -> Self {
         self.dwStyle = style;
         self
     }
@@ -180,7 +179,7 @@ impl<'a> WindowBuilder<'a> {
     /// [`CreateWindowEx`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw
     /// [Extended Window Styles]: https://docs.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles
     /// [article by Kenny Kerr]: https://docs.microsoft.com/en-us/archive/msdn-magazine/2014/june/windows-with-c-high-performance-window-layering-using-the-windows-composition-engine
-    pub fn ex_style(mut self, style: DWORD) -> Self {
+    pub fn ex_style(mut self, style: WINDOW_EX_STYLE) -> Self {
         self.dwExStyle = style;
         self
     }
@@ -195,7 +194,7 @@ impl<'a> WindowBuilder<'a> {
     ///
     /// [`CreateWindowEx`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw
     /// [`EnumDisplayMonitors`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaymonitors
-    pub fn position(mut self, x: c_int, y: c_int) -> Self {
+    pub fn position(mut self, x: i32, y: i32) -> Self {
         self.x = x;
         self.y = y;
         self
@@ -207,7 +206,7 @@ impl<'a> WindowBuilder<'a> {
     /// the other, use `CW_USEDEFAULT`. These are in raw pixel values.
     ///
     /// [`CreateWindowEx`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindowexw
-    pub fn size(mut self, width: c_int, height: c_int) -> Self {
+    pub fn size(mut self, width: i32, height: i32) -> Self {
         self.nWidth = width;
         self.nHeight = height;
         self
@@ -263,23 +262,48 @@ impl<'a> WindowBuilder<'a> {
     }
 }
 
-#[cfg(target_arch = "x86_64")]
-type WindowLongPtr = winapi::shared::basetsd::LONG_PTR;
-#[cfg(target_arch = "x86")]
-type WindowLongPtr = winapi::shared::ntdef::LONG;
+#[cfg(target_pointer_width = "32")]
+use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongW, SetWindowLongW};
+
+#[cfg(target_pointer_width = "64")]
+use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, SetWindowLongPtrW};
+
+#[allow(non_snake_case)]
+#[cfg(target_pointer_width = "32")]
+unsafe fn SetWindowLongPtr(window: HWND, index: WINDOW_LONG_PTR_INDEX, value: isize) -> isize {
+    SetWindowLongW(window, index, value as _) as _
+}
+
+#[allow(non_snake_case)]
+#[cfg(target_pointer_width = "64")]
+unsafe fn SetWindowLongPtr(window: HWND, index: WINDOW_LONG_PTR_INDEX, value: isize) -> isize {
+    SetWindowLongPtrW(window, index, value)
+}
+
+#[allow(non_snake_case)]
+#[cfg(target_pointer_width = "32")]
+unsafe fn GetWindowLongPtr(window: HWND, index: WINDOW_LONG_PTR_INDEX) -> isize {
+    GetWindowLongW(window, index) as _
+}
+
+#[allow(non_snake_case)]
+#[cfg(target_pointer_width = "64")]
+unsafe fn GetWindowLongPtr(window: HWND, index: WINDOW_LONG_PTR_INDEX) -> isize {
+    GetWindowLongPtrW(window, index)
+}
 
 unsafe extern "system" fn raw_window_proc(
     hwnd: HWND,
-    msg: UINT,
+    msg: u32,
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
     if msg == WM_CREATE {
-        let create_struct = &*(lparam as *const CREATESTRUCTW);
+        let create_struct = &*(lparam.0 as *const CREATESTRUCTW);
         let window_state_ptr = create_struct.lpCreateParams;
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, window_state_ptr as WindowLongPtr);
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, window_state_ptr as _);
     }
-    let window_proc_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const Box<dyn WindowProc>;
+    let window_proc_ptr = GetWindowLongPtr(hwnd, GWLP_USERDATA) as *const Box<dyn WindowProc>;
     let result = {
         if window_proc_ptr.is_null() {
             None
@@ -294,7 +318,7 @@ unsafe extern "system" fn raw_window_proc(
     };
 
     if msg == WM_NCDESTROY && !window_proc_ptr.is_null() {
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, 0);
         mem::drop(Rc::from_raw(window_proc_ptr));
     }
     result.unwrap_or_else(|| DefWindowProcW(hwnd, msg, wparam, lparam))
@@ -307,14 +331,14 @@ impl WindowClass {
     pub fn builder(class_name: impl AsRef<OsStr>) -> WindowClassBuilder {
         WindowClassBuilder {
             class_name: class_name.to_wide_null(),
-            style: 0,
+            style: 0.into(),
             cbWndExtra: 0,
-            hInstance: null_mut(),
-            hIcon: null_mut(),
-            hCursor: null_mut(),
-            hbrBackground: null_mut(),
+            hInstance: Default::default(),
+            hIcon: Default::default(),
+            hCursor: Default::default(),
+            hbrBackground: Default::default(),
             menu_name: Vec::new(),
-            hIconSm: null_mut(),
+            hIconSm: Default::default(),
         }
     }
 
@@ -326,10 +350,10 @@ impl WindowClass {
         WindowClass::Name(class_name.to_wide_null())
     }
 
-    fn as_lpcwstr(&self) -> LPCWSTR {
+    fn as_lpwstr(&self) -> PWSTR {
         match self {
-            WindowClass::Atom(atom) => *atom as LPCWSTR,
-            WindowClass::Name(name) => name.as_ptr(),
+            WindowClass::Atom(atom) => PWSTR(*atom as _),
+            WindowClass::Name(name) => PWSTR(name.as_ptr() as *mut _),
         }
     }
 }
@@ -354,8 +378,8 @@ impl WindowClassBuilder {
                 hIcon: self.hIcon,
                 hCursor: self.hCursor,
                 hbrBackground: self.hbrBackground,
-                lpszMenuName: pointer_or_null(&self.menu_name),
-                lpszClassName: self.class_name.as_ptr(),
+                lpszMenuName: PWSTR(pointer_or_null(&self.menu_name) as *mut _),
+                lpszClassName: PWSTR(self.class_name.as_ptr() as *mut _),
                 hIconSm: self.hIconSm,
             };
             // TODO: probably should be RegisterClassExW so we can set small icon
@@ -379,7 +403,7 @@ impl WindowClassBuilder {
     /// [`WNDCLASSEX`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-wndclassexw
     /// [Class Styles]: https://docs.microsoft.com/en-us/windows/win32/winmsg/about-window-classes#class-styles
     /// [Window Class Styles]: https://docs.microsoft.com/en-us/windows/win32/winmsg/window-class-styles
-    pub fn class_style(mut self, style: DWORD) -> Self {
+    pub fn class_style(mut self, style: WNDCLASS_STYLES) -> Self {
         self.style = style;
         self
     }
@@ -400,7 +424,7 @@ impl WindowClassBuilder {
     ///
     /// [`RegisterClassEx`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerclassexw
     /// [`WNDCLASSEX`]: https://docs.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-wndclassexw
-    pub unsafe fn wnd_extra_bytes(mut self, extra_bytes: c_int) -> Self {
+    pub unsafe fn wnd_extra_bytes(mut self, extra_bytes: i32) -> Self {
         self.cbWndExtra = extra_bytes;
         self
     }
@@ -518,7 +542,7 @@ impl WindowClassBuilder {
 
     // Note: this arguably should be defined in the winapi crate. In any case,
     // probably not that important.
-    pub const DLGWINDOWEXTRA: c_int = 30;
+    pub const DLGWINDOWEXTRA: i32 = 30;
 }
 
 /// A convenience function for an optional string, on which an empty slice
